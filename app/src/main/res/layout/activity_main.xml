@@ -13,8 +13,10 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Join Room"
+        android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
-        tools:layout_editor_absoluteY="0dp" />
+        tools:layout_editor_absoluteY="0dp"
+        tools:visibility="invisible" />
 
     <GridView
         android:id="@+id/grdRemote"
@@ -36,10 +38,8 @@
     <view
         android:id="@+id/svLocalView"
         class="io.skyway.Peer.Browser.Canvas"
-        android:layout_width="1920px"
-        android:layout_height="1080px"
-        android:layout_marginRight="16dp"
-        android:layout_marginBottom="16dp"
+        android:layout_width="640px"
+        android:layout_height="360px"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintRight_toRightOf="parent" />
 

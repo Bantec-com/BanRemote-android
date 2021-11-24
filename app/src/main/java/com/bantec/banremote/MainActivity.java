@@ -1,27 +1,32 @@
 package com.bantec.banremote;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiEnterpriseConfig;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -29,12 +34,13 @@ import android.widget.EditText;
 import android.widget.GridView;
 import android.widget.Toast;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import io.skyway.Peer.Browser.Canvas;
 import io.skyway.Peer.Browser.MediaConstraints;
 import io.skyway.Peer.Browser.MediaStream;
 import io.skyway.Peer.Browser.Navigator;
-import io.skyway.Peer.CallOption;
-import io.skyway.Peer.MediaConnection;
 import io.skyway.Peer.OnCallback;
 import io.skyway.Peer.Peer;
 import io.skyway.Peer.PeerError;
@@ -52,13 +58,13 @@ public class MainActivity extends Activity {
   private static final String API_KEY = "35dd9a9d-8bb8-4d82-9d4c-f45e8a8b5bc9";
   private static final String DOMAIN = "ban-remote.com";
 
-  private Peer			_peer;
-  private MediaStream		_localStream;
+  private Peer _peer;
+  private MediaStream _localStream;
   private Room _room;
-  private RemoteViewAdapter   _adapter;
+  private RemoteViewAdapter _adapter;
 
-  private String			_strOwnId;
-  private boolean			_bConnected;
+  private String _strOwnId;
+  private boolean _bConnected;
 
   private Handler _handler;
 
@@ -66,20 +72,66 @@ public class MainActivity extends Activity {
 
   private RoomOption _option;
 
+  private ProgressDialog progressDialog = null;
+
+  WifiManager wifiManager = null;
+  BroadcastReceiver wifiScanReceiver = null;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-
     setContentView(R.layout.activity_main);
 
-    if(!isNetworkConnected()) {
-      Toast.makeText(this, "ネットワークに接続されていません。", Toast.LENGTH_SHORT).show();
-      connectToNetwork("GoogleGlass", "mumblepasswod1234", "WPA");
-      return;
+    if (!isNetworkConnected()) {
+      progressDialog = new ProgressDialog(this);
+      progressDialog.setTitle("ネットワークに接続しています");
+      progressDialog.setMessage("このままお待ちください。");
+      progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+      progressDialog.show();
+      getIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+      if (wifiManager.isWifiEnabled() == false) {
+        wifiManager.setWifiEnabled(true);
+      }
+
+      wifiScanReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+          boolean success = intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false);
+          if (success) {
+            scanSuccess();
+          } else {
+            scanFailure();
+          }
+        }
+      };
+
+      if (ContextCompat.checkSelfPermission(this,
+              Manifest.permission.CHANGE_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CHANGE_WIFI_STATE}, 0);
+      } else {
+      }
+
+      if (ContextCompat.checkSelfPermission(this,
+              Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 0);
+      } else {
+        registerReceiver(wifiScanReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        boolean success = wifiManager.startScan();
+        if (!success) {
+          scanFailure();
+          return;
+        }
+      }
+    }
+    else {
+      initSkyway();
     }
 
 
+  }
+
+  private void initSkyway() {
     _handler = new Handler(Looper.getMainLooper());
     final Activity activity = this;
 
@@ -104,11 +156,10 @@ public class MainActivity extends Activity {
 
         // Request permissions
         if (ContextCompat.checkSelfPermission(activity,
-            Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(activity,
-            Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-          ActivityCompat.requestPermissions(activity,new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO},0);
-        }
-        else {
+                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED && ContextCompat.checkSelfPermission(activity,
+                Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+          ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}, 0);
+        } else {
           // Get a local MediaStream & show it
           startLocalStream();
         }
@@ -116,7 +167,7 @@ public class MainActivity extends Activity {
       }
     });
 
-    _peer.on(Peer.PeerEventEnum.CLOSE, new OnCallback()	{
+    _peer.on(Peer.PeerEventEnum.CLOSE, new OnCallback() {
       @Override
       public void onCallback(Object object) {
         Log.d(TAG, "[On/Close]");
@@ -137,16 +188,15 @@ public class MainActivity extends Activity {
 
     Button btnAction = (Button) findViewById(R.id.btnAction);
     btnAction.setEnabled(true);
-    btnAction.setOnClickListener(new View.OnClickListener()	{
+    btnAction.setOnClickListener(new View.OnClickListener() {
       @Override
-      public void onClick(View v)	{
+      public void onClick(View v) {
         v.setEnabled(false);
 
         if (!_bConnected) {
           // Join room
           joinRoom();
-        }
-        else {
+        } else {
           // Leave room
           leaveRoom();
         }
@@ -159,11 +209,111 @@ public class MainActivity extends Activity {
     //
     // Set GridView for Remote Video Stream
     //
-    GridView grdRemote = (GridView)findViewById(R.id.grdRemote);
+    GridView grdRemote = (GridView) findViewById(R.id.grdRemote);
     if (null != grdRemote) {
       _adapter = new RemoteViewAdapter(this);
       grdRemote.setAdapter(_adapter);
     }
+  }
+
+  private void scanSuccess() {
+    Log.i("main", "ScanResultStart");
+
+    int id = -1;
+    for(int i = 0; i < wifiManager.getScanResults().size(); i++) {
+      ScanResult sr = wifiManager.getScanResults().get(i);
+      Log.i("main", "SSID" + i + ": " + sr.SSID);
+      if(sr.SSID.contains("GoogleGlass"))
+        id = i;
+    }
+
+    if(id < 0) {
+      //ここで一画面入れる
+      //Toast.makeText(this, "Google Glass用のWi-Fi APが見つかりませんでした。", Toast.LENGTH_SHORT).show();
+      return;
+    }
+    ScanResult connectScanResult = wifiManager.getScanResults().get(id);
+
+    @Nullable
+    List<WifiConfiguration> configuredNetworks;
+
+    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+      // TODO: Consider calling
+      //    ActivityCompat#requestPermissions
+      // here to request the missing permissions, and then overriding
+      //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+      //                                          int[] grantResults)
+      // to handle the case where the user grants the permission. See the documentation
+      // for ActivityCompat#requestPermissions for more details.
+      Log.i("", "位置情報の権限がありません。");
+      return;
+    }
+    configuredNetworks = wifiManager.getConfiguredNetworks();
+    try {
+      Log.i("main", "configuredNetworks = OK");
+      configuredNetworks = wifiManager.getConfiguredNetworks();
+    }
+    catch (Exception e) {
+      Log.i("main", "configuredNetworks = null");
+      configuredNetworks = null;
+    }
+
+    int networkId = -1;
+    if(configuredNetworks != null) {
+      for(int i = 0; i < configuredNetworks.size(); i++) {
+        WifiConfiguration configuredNetwork = configuredNetworks.get(i);
+        // "（ダブルクォーテーション） が前後についているので除外している
+        String normalizedSsid = configuredNetwork.SSID.substring(1,
+                configuredNetwork.SSID.length() - 1);
+
+        if(connectScanResult.SSID.equals(normalizedSsid)) {
+          networkId = configuredNetwork.networkId;
+          break;
+        }
+      }
+    }
+    if(networkId < 0) {
+      //接続情報がないので作る
+      WifiConfiguration configuration = new WifiConfiguration();
+      Log.e("main", connectScanResult.SSID);
+      configuration.SSID = "\"" + connectScanResult.SSID + "\"";
+      configuration.allowedProtocols.clear();
+      configuration.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+      configuration.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+      configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+      configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+      configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+      configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
+      configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP104);
+      configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+      configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+      configuration.preSharedKey = "\"mumblepasswod1234\"";
+
+      networkId = wifiManager.addNetwork(configuration);
+      if(networkId == -1)
+        Log.e("main", "Configuration failed.");
+
+    }
+    if(networkId < 0) {
+      Toast.makeText(this, "接続できませんでした", Toast.LENGTH_SHORT).show();
+      return;
+    }
+
+    if (wifiManager.enableNetwork(networkId, true)) {
+      progressDialog.dismiss();
+      unregisterNetworkChanges();
+      Intent intent = new Intent(this, MainActivity.class);
+      startActivity(intent);
+    } else {
+      Toast.makeText(this, "接続できませんでした", Toast.LENGTH_SHORT).show();
+    }
+  }
+  private void scanFailure() {
+
+  }
+
+  private void unregisterNetworkChanges() {
+    unregisterReceiver(wifiScanReceiver);
   }
 
   private boolean isNetworkConnected() {
@@ -178,24 +328,6 @@ public class MainActivity extends Activity {
         activeNetwork.isConnectedOrConnecting();
   }
 
-  private void connectToNetwork(String networkSSID, String networkPass, String networkCapabilities) {
-    WifiConfiguration wifiConfig= new WifiConfiguration();
-    wifiConfig.SSID=networkSSID;
-    if (networkCapabilities.toUpperCase().contains("WEP")) { //WEP Network.
-      Toast.makeText(this, "WEP Network", Toast.LENGTH_SHORT).show();
-      wifiConfig.wepKeys[0]= networkPass;
-      wifiConfig.wepTxKeyIndex= 0;
-      wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-      wifiConfig.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
-    } else if (networkCapabilities.toUpperCase().contains("WPA")) { //WPA Network
-      Toast.makeText(this, "WPA Network", Toast.LENGTH_SHORT).show();
-      wifiConfig.preSharedKey= networkPass;
-    } else { //OPEN Network.
-      Toast.makeText(this, "OPEN Network", Toast.LENGTH_SHORT).show();
-      wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-    }
-  }
-
   @Override
   public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
     switch (requestCode) {
@@ -205,6 +337,14 @@ public class MainActivity extends Activity {
         }
         else {
           Toast.makeText(this,"Failed to access the camera and microphone.\nclick allow when asked for permission.", Toast.LENGTH_LONG).show();
+        }
+        break;
+      }
+      case 1: {
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        }
+        else {
+          Toast.makeText(this,"Failed to access the wifi scan.\nclick allow when asked for permission.", Toast.LENGTH_LONG).show();
         }
         break;
       }
@@ -265,6 +405,7 @@ public class MainActivity extends Activity {
     _constraints.maxHeight = 1080;
     _localStream = Navigator.getUserMedia(_constraints);
     Canvas canvas = (Canvas) findViewById(R.id.svLocalView);
+    _localStream.setEnableAudioTrack(0, true);
     _localStream.addVideoRenderer(canvas,0);
   }
 
@@ -451,10 +592,15 @@ public class MainActivity extends Activity {
             break;
         }
         if(mes.startsWith("cmd#%OffsetX=")) {
+          /*
           int sy = mes.indexOf("OffsetY");
           String x = mes.substring(13, sy); //ここから
           int end = mes.indexOf("#%#");
           String y = mes.substring(sy+7, end);
+          Toast.makeText(MainActivity.this, "x: " + x, Toast.LENGTH_LONG).show();
+          Toast.makeText(MainActivity.this, "y: " + y, Toast.LENGTH_LONG).show();
+
+
           int ix = Integer.parseInt(x);
           int iy = Integer.parseInt(y);
           Paint paint = new Paint();
@@ -465,7 +611,7 @@ public class MainActivity extends Activity {
           android.graphics.Canvas can = new android.graphics.Canvas();
           can.drawCircle(ix, iy, 10, paint);
           canvas.draw(new android.graphics.Canvas());
-          Toast.makeText(MainActivity.this, mes, Toast.LENGTH_LONG).show();
+          Toast.makeText(MainActivity.this, mes, Toast.LENGTH_LONG).show();*/
         } else if (mes.startsWith("cmd#%InitX=")) {
           int sy = mes.indexOf("InitY");
           String x = mes.substring(11, sy);
@@ -473,7 +619,6 @@ public class MainActivity extends Activity {
           String y = mes.substring(sy+8, end);
           int ix = Integer.parseInt(x);
           int iy = Integer.parseInt(y);
-          Toast.makeText(MainActivity.this, "Init", Toast.LENGTH_LONG).show();
           Toast.makeText(MainActivity.this, mes, Toast.LENGTH_LONG).show();
         }
       }
