@@ -14,6 +14,9 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -82,10 +85,19 @@ public class MainActivity extends Activity {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
 
+    if(isOkNetwork("ネットワークに接続しています", "このままお待ちください。"))
+      initApp();
+  }
+
+  private void initApp() {
+    initSkyway();
+  }
+
+  private boolean isOkNetwork(String title, String message) {
     if (!isNetworkConnected()) {
       progressDialog = new ProgressDialog(this);
-      progressDialog.setTitle("ネットワークに接続しています");
-      progressDialog.setMessage("このままお待ちください。");
+      progressDialog.setTitle(title);
+      progressDialog.setMessage(message);
       progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
       progressDialog.show();
       getIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -107,28 +119,24 @@ public class MainActivity extends Activity {
       };
 
       if (ContextCompat.checkSelfPermission(this,
-              Manifest.permission.CHANGE_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
+          Manifest.permission.CHANGE_WIFI_STATE) != PackageManager.PERMISSION_GRANTED) {
         ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CHANGE_WIFI_STATE}, 0);
       } else {
       }
 
       if (ContextCompat.checkSelfPermission(this,
-              Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+          Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 0);
       } else {
         registerReceiver(wifiScanReceiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
         boolean success = wifiManager.startScan();
         if (!success) {
           scanFailure();
-          return;
+          return false;
         }
       }
     }
-    else {
-      initSkyway();
-    }
-
-
+    return true;
   }
 
   private void initSkyway() {
@@ -200,7 +208,6 @@ public class MainActivity extends Activity {
           // Leave room
           leaveRoom();
         }
-
         v.setEnabled(true);
       }
     });
@@ -217,8 +224,6 @@ public class MainActivity extends Activity {
   }
 
   private void scanSuccess() {
-    Log.i("main", "ScanResultStart");
-
     int id = -1;
     for(int i = 0; i < wifiManager.getScanResults().size(); i++) {
       ScanResult sr = wifiManager.getScanResults().get(i);
@@ -228,10 +233,14 @@ public class MainActivity extends Activity {
     }
 
     if(id < 0) {
-      //ここで一画面入れる
+      progressDialog.setTitle("【BR-001】操作が必要です");
+      progressDialog.setMessage("テザリングを有効にしてください。その後自動で接続されます。このままお待ちください。");
       //Toast.makeText(this, "Google Glass用のWi-Fi APが見つかりませんでした。", Toast.LENGTH_SHORT).show();
       return;
     }
+
+    progressDialog.setTitle("ネットワークに接続しています");
+    progressDialog.setMessage("このままお待ちください。");
     ScanResult connectScanResult = wifiManager.getScanResults().get(id);
 
     @Nullable
@@ -246,6 +255,10 @@ public class MainActivity extends Activity {
       // to handle the case where the user grants the permission. See the documentation
       // for ActivityCompat#requestPermissions for more details.
       Log.i("", "位置情報の権限がありません。");
+      ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 0);
+      //GUIdで権限を設定する
+      //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+      //startActivityForResult(intent, 2);
       return;
     }
     configuredNetworks = wifiManager.getConfiguredNetworks();
@@ -491,8 +504,8 @@ public class MainActivity extends Activity {
       @Override
       public void onCallback(Object object) {
         String roomName = (String)object;
-        Log.i(TAG, "Leave Room: " + roomName);
-        Toast.makeText(MainActivity.this, "Leave Room: " + roomName, Toast.LENGTH_LONG).show();
+
+        isOkNetwork("再接続しています", "通信が遮断されました。再接続しています。");
 
         // Remove all streams
         _adapter.removeAllRenderers();
