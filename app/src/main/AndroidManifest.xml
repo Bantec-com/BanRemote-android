@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.bantec.banremote">
 
     <uses-feature android:name="android.hardware.camera" />
@@ -17,6 +18,7 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -25,6 +27,21 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BanRemote">
+        <receiver
+            android:name=".StartupReceiver"
+            android:directBootAware="true"
+            android:exported="true"
+            tools:ignore="WrongManifestParent">
+            <intent-filter>
+                <!-- 端末起動時のインテント -->
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".StartupService"
+            android:directBootAware="true"
+            tools:ignore="WrongManifestParent">
+        </service>
         <activity
             android:name=".ReconnectNetworkActivity"
             android:exported="false" />
@@ -33,7 +50,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="com.google.android.glass.category.DIRECTORY" />
             </intent-filter>

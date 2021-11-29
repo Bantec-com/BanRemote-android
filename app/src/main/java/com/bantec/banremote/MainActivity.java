@@ -84,6 +84,8 @@ public class MainActivity extends Activity {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
+    //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+    //startActivityForResult(intent, 2);
 
     if(isOkNetwork("ネットワークに接続しています", "このままお待ちください。"))
       initApp();
@@ -149,7 +151,7 @@ public class MainActivity extends Activity {
     PeerOption option = new PeerOption();
     option.key = API_KEY;
     option.domain = DOMAIN;
-    _peer = new Peer(this, option);
+    _peer = new Peer(this, "GoogleGlass", option);
 
     //
     // Set Peer event callbacks
