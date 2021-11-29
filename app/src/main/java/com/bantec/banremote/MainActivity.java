@@ -1,6 +1,7 @@
 package com.bantec.banremote;
 
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -87,8 +88,27 @@ public class MainActivity extends Activity {
     //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
     //startActivityForResult(intent, 2);
 
+    //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+    //startActivityForResult(intent, 2);
+
     if(isOkNetwork("ネットワークに接続しています", "このままお待ちください。"))
       initApp();
+
+
+  }
+
+  @Override
+  public void onBackPressed() {
+    // ダイアログ表示
+    new AlertDialog.Builder(this)
+        .setTitle("遠隔支援アプリを終了しますか？")
+              .setMessage("遠隔アプリを終了して良いですか？再度アプリを起動するまで、支援を受けることはできません。")
+              .setPositiveButton("OK", (dialog, which) -> {
+      // OKが押された場合、Activity を終了し、前のページへ
+      finish();
+    })
+        .setNegativeButton("キャンセル", null)
+        .show();
   }
 
   private void initApp() {
@@ -259,8 +279,6 @@ public class MainActivity extends Activity {
       Log.i("", "位置情報の権限がありません。");
       ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 0);
       //GUIdで権限を設定する
-      //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-      //startActivityForResult(intent, 2);
       return;
     }
     configuredNetworks = wifiManager.getConfiguredNetworks();
