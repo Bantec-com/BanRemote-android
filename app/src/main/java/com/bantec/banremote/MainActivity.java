@@ -85,8 +85,6 @@ public class MainActivity extends Activity {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
-    //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-    //startActivityForResult(intent, 2);
 
     //Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
     //startActivityForResult(intent, 2);
@@ -102,11 +100,11 @@ public class MainActivity extends Activity {
     // ダイアログ表示
     new AlertDialog.Builder(this)
         .setTitle("遠隔支援アプリを終了しますか？")
-              .setMessage("遠隔アプリを終了して良いですか？再度アプリを起動するまで、支援を受けることはできません。")
-              .setPositiveButton("OK", (dialog, which) -> {
-      // OKが押された場合、Activity を終了し、前のページへ
-      finish();
-    })
+        .setMessage("遠隔アプリを終了して良いですか？再度アプリを起動するまで、支援を受けることはできません。")
+        .setPositiveButton("OK", (dialog, which) -> {
+          // OKが押された場合、Activity を終了し、前のページへ
+          android.os.Process.killProcess(android.os.Process.myPid());
+        })
         .setNegativeButton("キャンセル", null)
         .show();
   }
